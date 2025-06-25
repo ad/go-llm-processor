@@ -249,23 +249,17 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 	retryConfig.MaxRetries = tj.poller.config.MaxRetries
 
 	err = retry.Do(taskCtx, retryConfig, func() error {
-		var genErr error
+		modelToUse := tj.poller.config.ModelName
 
 		// Generate prompt for product description
 		var prompt string
-		if ollamaParams != nil {
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, ollamaParams.Prompt)
-		} else {
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, "")
-		}
-
-		modelToUse := tj.poller.config.ModelName
-		// Use custom parameters if provided, otherwise use defaults
 		if ollamaParams != nil {
 			// Use custom model if specified, otherwise use config default
 			if ollamaParams.Model != "" {
 				modelToUse = ollamaParams.Model
 			}
+
+			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, ollamaParams.Prompt)
 		} else {
 			temp := 0.3
 			topP := 0.9
@@ -279,7 +273,16 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 				TopK:          &topK,
 				RepeatPenalty: &repeatPenalty,
 			}
+
+			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, "")
 		}
+
+		if err := tj.ollamaClient.EnsureModelAvailable(modelToUse); err != nil {
+			log.Printf("Модель %s недоступна и не может быть скачана: %v\n", modelToUse, err)
+			return err
+		}
+
+		var genErr error
 
 		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, prompt, ollamaParams)
 

@@ -6,13 +6,21 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strings"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
+	modelCache map[string]bool
+	cacheMutex sync.RWMutex
+	sf         singleflight.Group
 }
 
 type OllamaParams struct {
@@ -53,6 +61,7 @@ func NewClient(baseURL string) *Client {
 		httpClient: &http.Client{
 			Timeout: 60 * time.Second,
 		},
+		modelCache: make(map[string]bool),
 	}
 }
 
@@ -144,4 +153,129 @@ func (c *Client) Health(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// Проверка кэша
+func (c *Client) isModelCached(modelName string) bool {
+	c.cacheMutex.RLock()
+	defer c.cacheMutex.RUnlock()
+	return c.modelCache[modelName]
+}
+
+func (c *Client) cacheModel(modelName string, available bool) {
+	c.cacheMutex.Lock()
+	defer c.cacheMutex.Unlock()
+	c.modelCache[modelName] = available
+}
+
+// Проверка наличия модели через Ollama API
+func (c *Client) checkModelAvailability(modelName string) error {
+	resp, err := c.httpClient.Get(c.baseURL + "/api/tags")
+	if err != nil {
+		return fmt.Errorf("failed to get models list: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("API error when getting models: status %d", resp.StatusCode)
+	}
+
+	bodyBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read models response: %w", err)
+	}
+
+	var modelsResp struct {
+		Models []struct {
+			Name string `json:"name"`
+		}
+	}
+	if err := json.Unmarshal(bodyBytes, &modelsResp); err != nil {
+		return fmt.Errorf("failed to decode models response: %w", err)
+	}
+
+	for _, model := range modelsResp.Models {
+		if strings.Contains(model.Name, modelName) || model.Name == modelName {
+			c.cacheModel(modelName, true)
+			return nil
+		}
+	}
+	return fmt.Errorf("model %s not found in available models", modelName)
+}
+
+// Скачивание модели через Ollama API
+func (c *Client) pullModel(modelName string) error {
+	log.Printf("Скачивание модели: %s\n", modelName)
+	pullReq := struct {
+		Name   string `json:"name"`
+		Stream bool   `json:"stream"`
+	}{Name: modelName, Stream: true}
+
+	jsonData, err := json.Marshal(pullReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal pull request: %w", err)
+	}
+
+	resp, err := c.httpClient.Post(c.baseURL+"/api/pull", "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		return fmt.Errorf("failed to send pull request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		bodyBytes, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("API error when pulling model: status %d, body: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	decoder := json.NewDecoder(resp.Body)
+	var lastStatus string
+	var lastProgress float64
+
+	for {
+		var pullResp struct {
+			Name      string `json:"name"`
+			Status    string `json:"status"`
+			Total     int    `json:"total"`
+			Completed int    `json:"completed"`
+		}
+		if err := decoder.Decode(&pullResp); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("failed to decode pull response: %w", err)
+		}
+		if pullResp.Total > 0 && pullResp.Completed > 0 {
+			percentage := float64(pullResp.Completed) / float64(pullResp.Total) * 100
+			if percentage-lastProgress >= 10.0 {
+				fmt.Printf("Скачивание %s: %.0f%%\n", modelName, percentage)
+				lastProgress = percentage
+			}
+		} else if pullResp.Status != lastStatus && pullResp.Status != "" {
+			fmt.Printf("Модель %s: %s\n", modelName, pullResp.Status)
+			lastStatus = pullResp.Status
+		}
+	}
+	log.Printf("Модель %s скачана успешно\n", modelName)
+	return nil
+}
+
+// Гарантирует, что модель доступна (тихо, без лишних логов)
+func (c *Client) EnsureModelAvailable(modelName string) error {
+	if c.isModelCached(modelName) {
+		return nil
+	}
+	_, err, _ := c.sf.Do(modelName, func() (interface{}, error) {
+		if err := c.checkModelAvailability(modelName); err == nil {
+			return nil, nil
+		}
+		log.Printf("Модель %s не найдена, начинаем скачивание...\n", modelName)
+		if err := c.pullModel(modelName); err != nil {
+			return nil, fmt.Errorf("failed to download model %s: %w", modelName, err)
+		}
+		if err := c.checkModelAvailability(modelName); err != nil {
+			return nil, fmt.Errorf("model %s still not available after download: %w", modelName, err)
+		}
+		return nil, nil
+	})
+	return err
 }
