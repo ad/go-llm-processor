@@ -31,7 +31,7 @@ func NewTaskJob(task worker.Task, poller *Poller, ollamaClient *ollama.Client, w
 
 func (tj *TaskJob) Execute(ctx context.Context) error {
 	startTime := time.Now()
-	log.Printf("Processing task %s with processor %s", tj.task.ID, tj.poller.config.ProcessorID)
+	log.Printf("Processing task %s with processor %s\n", tj.task.ID, tj.poller.config.ProcessorID)
 
 	// Ensure task is removed from active list on completion
 	defer tj.poller.removeActiveTask(tj.task.ID)
@@ -41,7 +41,7 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 	// Parse ollama parameters from task
 	ollamaParams, err := tj.task.ParseOllamaParams()
 	if err != nil {
-		log.Printf("Error parsing ollama params for task %s: %v, using defaults", tj.task.ID, err)
+		log.Printf("Error parsing ollama params for task %s: %v, using defaults\n", tj.task.ID, err)
 		ollamaParams = nil
 	}
 
@@ -97,12 +97,12 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 	})
 
 	if err != nil {
-		log.Printf("Error generating description for task %s after retries: %v", tj.task.ID, err)
+		log.Printf("Error generating description for task %s after retries: %v\n", tj.task.ID, err)
 		metrics.GlobalMetrics.IncrementFailed()
 		// Возврат задачи в пул через requeue
 		requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, fmt.Sprintf("ollama error: %v", err))
 		if requeueErr != nil {
-			log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v", tj.task.ID, requeueErr)
+			log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v\n", tj.task.ID, requeueErr)
 		}
 		return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
 	}
@@ -115,6 +115,6 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 
 	processingTime := time.Since(startTime)
 	metrics.GlobalMetrics.IncrementCompleted(processingTime)
-	log.Printf("Task %s completed successfully by processor %s in %v", tj.task.ID, tj.poller.config.ProcessorID, processingTime)
+	log.Printf("Task %s completed successfully by processor %s in %v\n", tj.task.ID, tj.poller.config.ProcessorID, processingTime)
 	return nil
 }

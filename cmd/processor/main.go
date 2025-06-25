@@ -51,9 +51,9 @@ func main() {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		log.Printf("Health server starting on %s", cfg.HealthAddr)
+		log.Printf("Health server starting on %s\n", cfg.HealthAddr)
 		if err := healthServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Health server error: %v", err)
+			log.Printf("Health server error: %v\n", err)
 		}
 	}()
 
@@ -81,7 +81,7 @@ func main() {
 	defer shutdownCancel()
 
 	if err := healthServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("Health server shutdown error: %v", err)
+		log.Printf("Health server shutdown error: %v\n", err)
 	}
 
 	wg.Wait()

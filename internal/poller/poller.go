@@ -47,7 +47,7 @@ func (p *Poller) Start(ctx context.Context) {
 	ticker := time.NewTicker(p.config.PollInterval)
 	defer ticker.Stop()
 
-	log.Printf("Starting task poller with processor ID: %s, interval: %v", p.config.ProcessorID, p.config.PollInterval)
+	log.Printf("Starting task poller with processor ID: %s, interval: %v\n", p.config.ProcessorID, p.config.PollInterval)
 
 	for {
 		select {
@@ -67,7 +67,7 @@ func (p *Poller) Start(ctx context.Context) {
 func (p *Poller) processTasks(ctx context.Context) {
 	tasks, err := p.workerClient.GetPendingTasks(ctx)
 	if err != nil {
-		log.Printf("Error getting pending tasks: %v", err)
+		log.Printf("Error getting pending tasks: %v\n", err)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (p *Poller) processTasks(ctx context.Context) {
 		return
 	}
 
-	log.Printf("Processing %d pending tasks", len(tasks))
+	log.Printf("Processing %d pending tasks\n", len(tasks))
 
 	for _, task := range tasks {
 		select {
@@ -84,7 +84,7 @@ func (p *Poller) processTasks(ctx context.Context) {
 		default:
 			// Try to claim the task atomically
 			if err := p.workerClient.ClaimTask(ctx, task.ID, p.config.ProcessorID, int(p.config.RequestTimeout.Milliseconds())); err != nil {
-				log.Printf("Failed to claim task %s: %v", task.ID, err)
+				log.Printf("Failed to claim task %s: %v\n", task.ID, err)
 				continue
 			}
 
@@ -94,7 +94,7 @@ func (p *Poller) processTasks(ctx context.Context) {
 			// Submit task to worker pool
 			job := NewTaskJob(task, p, p.ollamaClient, p.workerClient)
 			if !p.workerPool.Submit(job) {
-				log.Printf("Worker pool queue is full, releasing task %s", task.ID)
+				log.Printf("Worker pool queue is full, releasing task %s\n", task.ID)
 				p.removeActiveTask(task.ID)
 				// TODO: Release the claimed task back to pending
 			}
@@ -127,7 +127,7 @@ func (p *Poller) getActiveTasks() []string {
 
 func (p *Poller) triggerCleanup(ctx context.Context) {
 	if err := p.workerClient.TriggerCleanup(ctx); err != nil {
-		log.Printf("Error triggering cleanup: %v", err)
+		log.Printf("Error triggering cleanup: %v\n", err)
 	}
 }
 
@@ -136,7 +136,7 @@ func (p *Poller) sendHeartbeats(ctx context.Context) {
 
 	for _, taskID := range activeTasks {
 		if err := p.workerClient.SendHeartbeat(ctx, taskID, p.config.ProcessorID); err != nil {
-			log.Printf("Error sending heartbeat for task %s: %v", taskID, err)
+			log.Printf("Error sending heartbeat for task %s: %v\n", taskID, err)
 			// Remove from active tasks if heartbeat fails
 			p.removeActiveTask(taskID)
 		}

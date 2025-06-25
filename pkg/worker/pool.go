@@ -31,7 +31,7 @@ func NewPool(workerCount, queueSize int) *Pool {
 }
 
 func (p *Pool) Start() {
-	log.Printf("Starting worker pool with %d workers", p.workerCount)
+	log.Printf("Starting worker pool with %d workers\n", p.workerCount)
 
 	for i := 0; i < p.workerCount; i++ {
 		p.wg.Add(1)
@@ -41,18 +41,18 @@ func (p *Pool) Start() {
 
 func (p *Pool) worker(id int) {
 	defer p.wg.Done()
-	log.Printf("Worker %d started", id)
+	log.Printf("Worker %d started\n", id)
 
 	for {
 		select {
 		case <-p.ctx.Done():
-			log.Printf("Worker %d stopping", id)
+			log.Printf("Worker %d stopping\n", id)
 			return
 		case job := <-p.jobQueue:
 			if job != nil {
 				atomic.AddInt32(&p.activeWorkers, 1)
 				if err := job.Execute(p.ctx); err != nil {
-					log.Printf("Worker %d: job execution failed: %v", id, err)
+					log.Printf("Worker %d: job execution failed: %v\n", id, err)
 				}
 				atomic.AddInt32(&p.activeWorkers, -1)
 			}

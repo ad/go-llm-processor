@@ -111,7 +111,7 @@ func (p *ImprovedPoller) processTasks(ctx context.Context) {
 
 	tasks, err := p.workerClient.ClaimTasksBatch(ctx, p.config.ProcessorID, batchSize, int(p.config.RequestTimeout.Milliseconds()))
 	if err != nil {
-		log.Printf("Error claiming tasks batch: %v", err)
+		log.Printf("Error claiming tasks batch: %v\n", err)
 		return
 	}
 
@@ -119,7 +119,7 @@ func (p *ImprovedPoller) processTasks(ctx context.Context) {
 		return
 	}
 
-	log.Printf("Claimed %d tasks in batch", len(tasks))
+	log.Printf("Claimed %d tasks in batch\n", len(tasks))
 
 	for _, task := range tasks {
 		select {
@@ -130,7 +130,7 @@ func (p *ImprovedPoller) processTasks(ctx context.Context) {
 			job := NewImprovedTaskJob(task, p, p.ollamaClient, p.workerClient)
 
 			if !p.workerPool.Submit(job) {
-				log.Printf("Worker pool full, releasing task %s", task.ID)
+				log.Printf("Worker pool full, releasing task %s\n", task.ID)
 				p.removeActiveTask(task.ID)
 				// Release task back to queue
 				p.workerClient.ReleaseTask(ctx, task.ID)
@@ -185,7 +185,7 @@ func (p *ImprovedPoller) sendHeartbeats(ctx context.Context) {
 	// Send task heartbeats
 	for _, taskID := range activeTasks {
 		if err := p.workerClient.SendHeartbeat(ctx, taskID, p.config.ProcessorID); err != nil {
-			log.Printf("Error sending heartbeat for task %s: %v", taskID, err)
+			log.Printf("Error sending heartbeat for task %s: %v\n", taskID, err)
 			p.removeActiveTask(taskID)
 		}
 	}
@@ -199,13 +199,13 @@ func (p *ImprovedPoller) sendHeartbeats(ctx context.Context) {
 		&systemMetrics.MemoryUsage,
 		&systemMetrics.QueueSize,
 	); err != nil {
-		log.Printf("Error sending processor heartbeat: %v", err)
+		log.Printf("Error sending processor heartbeat: %v\n", err)
 	}
 }
 
 func (p *ImprovedPoller) triggerCleanup(ctx context.Context) {
 	if err := p.workerClient.TriggerCleanup(ctx); err != nil {
-		log.Printf("Error triggering cleanup: %v", err)
+		log.Printf("Error triggering cleanup: %v\n", err)
 	}
 }
 
@@ -234,7 +234,7 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 	// Parse ollama parameters from task
 	ollamaParams, err := tj.task.ParseOllamaParams()
 	if err != nil {
-		log.Printf("Error parsing ollama params for task %s: %v, using defaults", tj.task.ID, err)
+		log.Printf("Error parsing ollama params for task %s: %v, using defaults\n", tj.task.ID, err)
 		ollamaParams = nil
 	}
 
@@ -290,7 +290,7 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 	})
 
 	if err != nil {
-		log.Printf("Error generating description for task %s after retries: %v", tj.task.ID, err)
+		log.Printf("Error generating description for task %s after retries: %v\n", tj.task.ID, err)
 		metrics.GlobalMetrics.IncrementFailed()
 		tj.poller.removeActiveTask(tj.task.ID)
 		return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
@@ -306,6 +306,6 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 	processingTime := time.Since(startTime)
 	metrics.GlobalMetrics.IncrementCompleted(processingTime)
 	tj.poller.removeActiveTask(tj.task.ID)
-	log.Printf("Task %s completed successfully in %v", tj.task.ID, processingTime)
+	log.Printf("Task %s completed successfully in %v\n", tj.task.ID, processingTime)
 	return nil
 }

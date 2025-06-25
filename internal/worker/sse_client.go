@@ -79,7 +79,7 @@ func (c *SSEClient) Start(ctx context.Context) {
 		return
 	}
 
-	log.Printf("Starting SSE client for processor %s", c.processorID)
+	log.Printf("Starting SSE client for processor %s\n", c.processorID)
 	go c.connectLoop(ctx)
 }
 
@@ -119,16 +119,16 @@ func (c *SSEClient) connectLoop(ctx context.Context) {
 		}
 
 		if attempts >= c.config.MaxReconnectAttempts {
-			log.Printf("Max reconnect attempts (%d) reached, giving up", c.config.MaxReconnectAttempts)
+			log.Printf("Max reconnect attempts (%d) reached, giving up\n", c.config.MaxReconnectAttempts)
 			c.errorChan <- fmt.Errorf("max reconnect attempts reached")
 			return
 		}
 
-		log.Printf("SSE connection attempt %d/%d", attempts+1, c.config.MaxReconnectAttempts)
+		log.Printf("SSE connection attempt %d/%d\n", attempts+1, c.config.MaxReconnectAttempts)
 
 		err := c.connect(ctx)
 		if err != nil {
-			log.Printf("SSE connection failed: %v", err)
+			log.Printf("SSE connection failed: %v\n", err)
 			attempts++
 
 			select {
@@ -142,7 +142,7 @@ func (c *SSEClient) connectLoop(ctx context.Context) {
 				backoff = time.Minute
 			}
 
-			log.Printf("Reconnecting in %v", backoff)
+			log.Printf("Reconnecting in %v\n", backoff)
 			select {
 			case <-time.After(backoff):
 			case <-ctx.Done():
@@ -172,7 +172,7 @@ func (c *SSEClient) connect(ctx context.Context) error {
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Cache-Control", "no-cache")
 
-	log.Printf("Connecting to SSE endpoint: %s with token %s", url, c.token)
+	log.Printf("Connecting to SSE endpoint: %s with token %s\n", url, c.token)
 	resp, err := c.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("making request: %w", err)
@@ -184,7 +184,7 @@ func (c *SSEClient) connect(ctx context.Context) error {
 		return fmt.Errorf("unexpected status %d: %s", resp.StatusCode, string(body))
 	}
 
-	log.Printf("SSE connection established for processor %s", c.processorID)
+	log.Printf("SSE connection established for processor %s\n", c.processorID)
 	return c.readEvents(ctx, resp.Body)
 }
 
@@ -224,10 +224,10 @@ func (c *SSEClient) readEvents(ctx context.Context, reader io.Reader) error {
 		if line == "" {
 			if len(lines) > 0 {
 				if err := c.parseEvent(lines, &event); err != nil {
-					log.Printf("Error parsing event: %v", err)
+					log.Printf("Error parsing event: %v\n", err)
 				} else {
 					if err := c.handleEvent(event); err != nil {
-						log.Printf("Error handling event: %v", err)
+						log.Printf("Error handling event: %v\n", err)
 					}
 					if event.Type == "heartbeat" {
 						lastHeartbeat = time.Now()
@@ -267,11 +267,16 @@ func (c *SSEClient) parseEvent(lines []string, event *SSEEvent) error {
 		}
 	}
 
+	// Если не найден event.Type, вернуть специальную ошибку
+	if event.Type == "" {
+		return nil //fmt.Errorf("empty event type, skip event")
+	}
+
 	return nil
 }
 
 func (c *SSEClient) handleEvent(event SSEEvent) error {
-	log.Printf("Received SSE event: type=%s, timestamp=%d", event.Type, event.Timestamp)
+	log.Printf("Received SSE event: type=%s, timestamp=%d\n", event.Type, event.Timestamp)
 
 	switch event.Type {
 	case "task_available":
@@ -280,24 +285,24 @@ func (c *SSEClient) handleEvent(event SSEEvent) error {
 			return fmt.Errorf("parsing task_available data: %w", err)
 		}
 
-		log.Printf("New task available: %s (priority=%d, retryCount=%d)",
+		log.Printf("New task available: %s (priority=%d, retryCount=%d)\n",
 			taskData.TaskID, taskData.Priority, taskData.RetryCount)
 
 		select {
 		case c.taskChan <- taskData:
 		default:
-			log.Printf("Task channel full, dropping task notification: %s", taskData.TaskID)
+			log.Printf("Task channel full, dropping task notification: %s\n", taskData.TaskID)
 		}
 
 	case "heartbeat":
-		log.Printf("Received heartbeat from server")
+		log.Printf("Received heartbeat from server\n")
 
 	case "processor_metrics":
 		var metrics ProcessorMetricsData
 		if err := json.Unmarshal(event.Data, &metrics); err != nil {
-			log.Printf("Error parsing processor metrics: %v", err)
+			log.Printf("Error parsing processor metrics: %v\n", err)
 		} else {
-			log.Printf("Processor metrics: total=%d, active=%d, pending=%d, avgTime=%d",
+			log.Printf("Processor metrics: total=%d, active=%d, pending=%d, avgTime=%d\n",
 				metrics.TotalProcessors, metrics.ActiveTasks, metrics.PendingTasks, metrics.AvgProcessingTime)
 		}
 
@@ -312,7 +317,7 @@ func (c *SSEClient) handleEvent(event SSEEvent) error {
 		}
 
 	default:
-		log.Printf("Unknown SSE event type: %s", event.Type)
+		// log.Printf("Unknown SSE event type: %s\n", event.Type)
 	}
 
 	return nil
