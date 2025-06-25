@@ -352,3 +352,34 @@ func (c *Client) SendProcessorHeartbeat(ctx context.Context, processorID string,
 
 	return nil
 }
+
+// RequeueTask отправляет запрос на возврат задачи в пул (requeue) в manager
+func (c *Client) RequeueTask(ctx context.Context, taskID, processorID, reason string) error {
+	request := map[string]interface{}{
+		"taskId":       taskID,
+		"processor_id": processorID,
+		"reason":       reason,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return fmt.Errorf("marshal requeue request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/internal/requeue", bytes.NewReader(body))
+	if err != nil {
+		return fmt.Errorf("create requeue request: %w", err)
+	}
+	c.addAuthHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do requeue request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("requeue error %d: %s", resp.StatusCode, string(respBody))
+	}
+	return nil
+}

@@ -99,6 +99,11 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 	if err != nil {
 		log.Printf("Error generating description for task %s after retries: %v", tj.task.ID, err)
 		metrics.GlobalMetrics.IncrementFailed()
+		// Возврат задачи в пул через requeue
+		requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, fmt.Sprintf("ollama error: %v", err))
+		if requeueErr != nil {
+			log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v", tj.task.ID, requeueErr)
+		}
 		return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
 	}
 
