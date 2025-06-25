@@ -84,9 +84,15 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, "")
 		}
 
+		// Проверяем доступность модели
 		if err := tj.ollamaClient.EnsureModelAvailable(modelToUse); err != nil {
 			log.Printf("Модель %s недоступна и не может быть скачана: %v\n", modelToUse, err)
-			return err
+			// Возврат задачи в пул через requeue
+			requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "model unavailable: "+err.Error())
+			if requeueErr != nil {
+				log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v\n", tj.task.ID, requeueErr)
+			}
+			return nil // Не продолжаем ретраи, задача возвращена в пул
 		}
 
 		var genErr error
