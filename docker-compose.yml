@@ -6,6 +6,7 @@ services:
       - OLLAMA_URL=http://host.docker.internal:11434
       - WORKER_URL=http://host.docker.internal:8080
       - HEALTH_ADDR=0.0.0.0:8081
+      - POLLING_ENABLED=false
       - POLL_INTERVAL=1s
       - MAX_RETRIES=3
       - REQUEST_TIMEOUT=30s
@@ -18,7 +19,7 @@ services:
       - INTERNAL_API_KEY=dev-internal-key
       - SSE_ENABLED=true
       - SSE_ENDPOINT=/api/internal/task-stream
-      - SSE_RECONNECT_INTERVAL=30s
+      - SSE_RECONNECT_INTERVAL=3s
       - SSE_MAX_RECONNECT_ATTEMPTS=1000000
       - SSE_HEARTBEAT_TIMEOUT=60s
     networks:

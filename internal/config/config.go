@@ -24,6 +24,7 @@ type Config struct {
 	MaxBatchSize      int
 	InternalAPIKey    string
 	SSE               SSEConfig
+	PollingEnabled    bool // новое поле
 }
 
 type SSEConfig struct {
@@ -42,6 +43,7 @@ func Load() *Config {
 		WorkerURL:         getEnv("WORKER_URL", "http://wrangler:8080"),
 		HealthAddr:        getEnv("HEALTH_ADDR", ":8081"),
 		PollInterval:      getDuration("POLL_INTERVAL", 5*time.Second),
+		PollingEnabled:    getBool("POLLING_ENABLED", true), // по умолчанию включён
 		MaxRetries:        getInt("MAX_RETRIES", 3),
 		RequestTimeout:    getDuration("REQUEST_TIMEOUT", 30*time.Second),
 		ModelName:         getEnv("MODEL_NAME", "gemma2:1b"),
