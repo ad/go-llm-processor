@@ -8,6 +8,9 @@ REPO=danielapatin/go-llm-manager
 build:
 	@BUILD_VERSION=$(BUILD_VERSION) KO_DOCKER_REPO=$(REPO) ko build ./cmd/processor --bare --local --sbom=none --tags="$(BUILD_VERSION),latest"
 
+build-windows:
+	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 go build -a -installsuffix cgo ./cmd/processor
+
 dev: dev-processor
 
 dev-processor: ## Start only Go processor dev

@@ -3,20 +3,20 @@ services:
     build: 
       dockerfile: Dockerfile.dev
     environment:
-      - OLLAMA_URL=http://host.docker.internal:11434
-      - WORKER_URL=http://host.docker.internal:8080
+      - OLLAMA_URL=http://172.16.100.181:8080
+      - WORKER_URL=https://apatin.ru
       - HEALTH_ADDR=0.0.0.0:8081
       - POLLING_ENABLED=false
-      - POLL_INTERVAL=1s
-      - MAX_RETRIES=3
+      - POLL_INTERVAL=300s
+      - MAX_RETRIES=5
       - REQUEST_TIMEOUT=30s
       - MODEL_NAME=gemma3:1b
       - WORKER_COUNT=2
-      - QUEUE_SIZE=100
+      - QUEUE_SIZE=8
       - MAX_BATCH_SIZE=8
       - PROCESSOR_ID=iMac15
       - HEARTBEAT_INTERVAL=10s
-      - INTERNAL_API_KEY=dev-internal-key
+      - INTERNAL_API_KEY=HiVfodusmowitvejeggaquztobaq43
       - SSE_ENABLED=true
       - SSE_ENDPOINT=/api/internal/task-stream
       - SSE_RECONNECT_INTERVAL=3s
