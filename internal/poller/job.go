@@ -31,7 +31,7 @@ func NewTaskJob(task worker.Task, poller *Poller, ollamaClient *ollama.Client, w
 
 func (tj *TaskJob) Execute(ctx context.Context) error {
 	startTime := time.Now()
-	log.Printf("Processing task %s with processor %s\n", tj.task.ID, tj.poller.config.ProcessorID)
+	log.Printf("Processing task %s with processor %s: %s\n", tj.task.ID, tj.poller.config.ProcessorID, tj.task.ProductData)
 
 	// Ensure task is removed from active list on completion
 	defer tj.poller.removeActiveTask(tj.task.ID)
@@ -58,15 +58,11 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 	err = retry.Do(taskCtx, retryConfig, func() error {
 		modelToUse := tj.poller.config.ModelName
 
-		// Generate prompt for product description
-		var prompt string
 		if ollamaParams != nil {
 			// Use custom model if specified, otherwise use config default
 			if ollamaParams.Model != "" {
 				modelToUse = ollamaParams.Model
 			}
-
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, ollamaParams.Prompt)
 		} else {
 			temp := 0.3
 			topP := 0.9
@@ -81,7 +77,10 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 				RepeatPenalty: &repeatPenalty,
 			}
 
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, "")
+		}
+
+		if ollamaParams.Prompt == "" {
+			ollamaParams.Prompt = promptutils.GetDefaultPrompt()
 		}
 
 		// Проверяем доступность модели
@@ -95,9 +94,10 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 			return nil // Не продолжаем ретраи, задача возвращена в пул
 		}
 
-		var genErr error
+		// log.Printf("Using model %s for task %s and params %+v\n", modelToUse, tj.task.ID, ollamaParams)
 
-		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, prompt, ollamaParams)
+		var genErr error
+		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, tj.task.ProductData, ollamaParams)
 		if genErr != nil {
 			metrics.GlobalMetrics.IncrementRetried()
 		}

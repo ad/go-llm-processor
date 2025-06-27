@@ -93,7 +93,7 @@ func (p *SSEPoller) startSSEMode(ctx context.Context) {
 		case taskData := <-p.sseClient.GetTaskChannel():
 			// Reset SSE failure count on successful task reception
 			sseFailures = 0
-			log.Printf("Received task via SSE: %s\n", taskData.TaskID)
+			// log.Printf("Received task via SSE: %s\n", taskData.TaskID)
 			p.handleSSETask(ctx, taskData)
 
 		case err := <-p.sseClient.GetErrorChannel():
@@ -132,17 +132,20 @@ func (p *SSEPoller) switchToHTTPPolling(ctx context.Context) {
 }
 
 func (p *SSEPoller) handleSSETask(ctx context.Context, taskData worker.TaskAvailableData) {
-	// Try to claim the specific task
+	// log.Printf("handleSSETask: trying to claim task %s", taskData.TaskID)
 	if err := p.workerClient.ClaimTask(ctx, taskData.TaskID, p.config.ProcessorID, 5000); err != nil {
 		log.Printf("Failed to claim task %s: %v\n", taskData.TaskID, err)
 		return
 	}
+	log.Printf("handleSSETask: successfully claimed task %s", taskData.TaskID)
 
 	// Create task job
 	task := worker.Task{
-		ID:         taskData.TaskID,
-		Priority:   taskData.Priority,
-		RetryCount: taskData.RetryCount,
+		ID:           taskData.TaskID,
+		Priority:     taskData.Priority,
+		RetryCount:   taskData.RetryCount,
+		ProductData:  taskData.ProductData,
+		OllamaParams: taskData.OllamaParams,
 	}
 
 	// Create task job with minimal poller wrapper
@@ -151,8 +154,12 @@ func (p *SSEPoller) handleSSETask(ctx context.Context, taskData worker.TaskAvail
 	}
 	job := NewTaskJob(task, pollerWrapper, p.ollamaClient, p.workerClient)
 
-	// Submit to worker pool
-	p.workerPool.Submit(job)
+	ok := p.workerPool.Submit(job)
+	if ok {
+		// log.Printf("handleSSETask: submitted task %s to worker pool", taskData.TaskID)
+	} else {
+		log.Printf("handleSSETask: failed to submit task %s to worker pool (queue full)", taskData.TaskID)
+	}
 }
 
 func (p *SSEPoller) processFallbackTasks(ctx context.Context) {

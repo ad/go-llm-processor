@@ -2,7 +2,6 @@ package poller
 
 import (
 	"context"
-	"log"
 
 	"github.com/ad/llm-proxy/processor/internal/config"
 	"github.com/ad/llm-proxy/processor/internal/worker"
@@ -38,11 +37,13 @@ func (s *SseTaskSource) Start(ctx context.Context, handler TaskHandler) {
 		case <-ctx.Done():
 			return
 		case taskData := <-s.sseClient.GetTaskChannel():
-			log.Printf("Received task via SSE: %s\n", taskData.TaskID)
+			// log.Printf("Received task via SSE: %s\n", taskData.TaskID)
 			task := worker.Task{
-				ID:         taskData.TaskID,
-				Priority:   taskData.Priority,
-				RetryCount: taskData.RetryCount,
+				ID:           taskData.TaskID,
+				Priority:     taskData.Priority,
+				RetryCount:   taskData.RetryCount,
+				ProductData:  taskData.ProductData,
+				OllamaParams: taskData.OllamaParams,
 				// ProductData и OllamaParams могут быть пустыми, если их нет в SSE
 			}
 			handler(ctx, task)

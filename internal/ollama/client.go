@@ -148,6 +148,8 @@ func (c *Client) GenerateWithParams(ctx context.Context, model, userPrompt strin
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
+	// log.Printf("Sending request to Ollama: %s\n", string(reqBody))
+
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/chat/completions", bytes.NewReader(reqBody))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)

@@ -268,9 +268,14 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 				TopP:          &topP,
 				TopK:          &topK,
 				RepeatPenalty: &repeatPenalty,
-				Prompt:        promptutils.GetDefaultPrompt(),
 			}
 		}
+
+		if ollamaParams.Prompt == "" {
+			ollamaParams.Prompt = promptutils.GetDefaultPrompt()
+		}
+
+		// log.Printf("Using model %s for task %s and params %v\n", modelToUse, tj.task.ID, ollamaParams)
 
 		if err := tj.ollamaClient.EnsureModelAvailable(modelToUse); err != nil {
 			log.Printf("Модель %s недоступна и не может быть скачана: %v\n", modelToUse, err)
