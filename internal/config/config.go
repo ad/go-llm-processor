@@ -10,6 +10,7 @@ import (
 )
 
 type Config struct {
+	SelfUpdateEnabled bool
 	OllamaURL         string
 	WorkerURL         string
 	HealthAddr        string
@@ -39,6 +40,7 @@ type SSEConfig struct {
 
 func Load() *Config {
 	return &Config{
+		SelfUpdateEnabled: getBool("SELF_UPDATE_ENABLED", true), // по умолчанию включено
 		OllamaURL:         getEnv("OLLAMA_URL", getEnv("OLLAMA_HOST", "http://ollama:11434")),
 		WorkerURL:         getEnv("WORKER_URL", "http://wrangler:8080"),
 		HealthAddr:        getEnv("HEALTH_ADDR", ":8081"),
