@@ -2,6 +2,7 @@ package poller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/ad/llm-proxy/processor/pkg/metrics"
 	"github.com/ad/llm-proxy/processor/pkg/retry"
 )
+
+var errTaskRequeued = errors.New("task requeued")
 
 type TaskJob struct {
 	task         worker.Task
@@ -90,8 +93,9 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 			requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "model unavailable: "+err.Error())
 			if requeueErr != nil {
 				log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v\n", tj.task.ID, requeueErr)
+				return requeueErr
 			}
-			return nil // Не продолжаем ретраи, задача возвращена в пул
+			return errTaskRequeued
 		}
 
 		// log.Printf("Using model %s for task %s and params %+v\n", modelToUse, tj.task.ID, ollamaParams)
@@ -104,6 +108,10 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 		return genErr
 	})
 
+	if errors.Is(err, errTaskRequeued) {
+		// Задача была requeue, не вызываем CompleteTask
+		return nil
+	}
 	if err != nil {
 		log.Printf("Error generating description for task %s after retries: %v\n", tj.task.ID, err)
 		metrics.GlobalMetrics.IncrementFailed()
@@ -111,8 +119,11 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 		requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, fmt.Sprintf("ollama error: %v", err))
 		if requeueErr != nil {
 			log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v\n", tj.task.ID, requeueErr)
+			// Если requeue не удался, пробуем завершить задачу с ошибкой
+			return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
 		}
-		return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
+		// Если requeue успешен, не вызываем CompleteTask, чтобы избежать гонки
+		return nil
 	}
 
 	// Complete task with result
