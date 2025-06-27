@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -15,10 +14,8 @@ import (
 	"github.com/ad/llm-proxy/processor/internal/health"
 	"github.com/ad/llm-proxy/processor/internal/ollama"
 	"github.com/ad/llm-proxy/processor/internal/poller"
+	"github.com/ad/llm-proxy/processor/internal/selfupdate"
 	"github.com/ad/llm-proxy/processor/internal/worker"
-
-	"github.com/blang/semver"
-	"github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
 var version = "v0.0.1"
@@ -29,27 +26,7 @@ func main() {
 	if !cfg.SelfUpdateEnabled {
 		log.Println("Self-update is disabled, skipping...")
 	} else {
-		latest, found, err := selfupdate.DetectLatest("ad/go-llm-processor")
-		if err == nil {
-			v, err := semver.ParseTolerant(version)
-			if err != nil {
-				log.Fatalf("ошибка парсинга версии: %v", err)
-			}
-
-			if found && latest.Version.GT(v) {
-				fmt.Println("Найдена новая версия:", latest.Version)
-				latest, err = selfupdate.UpdateSelf(latest.Version, "ad/go-llm-processor")
-				if err == nil {
-					if latest.Version.Equals(v) {
-						fmt.Println("Вы используете последнюю версию.", version, "=", latest.Version)
-					} else {
-						fmt.Println("Обновление до версии", latest.Version)
-					}
-				} else {
-					fmt.Println("Ошибка обновления:", err)
-				}
-			}
-		}
+		selfupdate.StartAutoUpdate(version, "ad/go-llm-processor", 5*time.Minute)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
