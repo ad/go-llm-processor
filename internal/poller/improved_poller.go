@@ -251,15 +251,11 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 	err = retry.Do(taskCtx, retryConfig, func() error {
 		modelToUse := tj.poller.config.ModelName
 
-		// Generate prompt for product description
-		var prompt string
+		// Корректно формируем prompt и userPrompt для chat/completions
 		if ollamaParams != nil {
-			// Use custom model if specified, otherwise use config default
 			if ollamaParams.Model != "" {
 				modelToUse = ollamaParams.Model
 			}
-
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, ollamaParams.Prompt)
 		} else {
 			temp := 0.3
 			topP := 0.9
@@ -272,9 +268,8 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 				TopP:          &topP,
 				TopK:          &topK,
 				RepeatPenalty: &repeatPenalty,
+				Prompt:        promptutils.GetDefaultPrompt(),
 			}
-
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, "")
 		}
 
 		if err := tj.ollamaClient.EnsureModelAvailable(modelToUse); err != nil {
@@ -283,8 +278,7 @@ func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
 		}
 
 		var genErr error
-
-		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, prompt, ollamaParams)
+		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, tj.task.ProductData, ollamaParams)
 
 		if genErr != nil {
 			metrics.GlobalMetrics.IncrementRetried()

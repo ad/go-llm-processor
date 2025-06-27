@@ -55,6 +55,34 @@ type GenerateResponse struct {
 	CreatedAt time.Time `json:"created_at"`
 }
 
+// --- Новый тип для chat/completions ---
+type ChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ChatCompletionRequest struct {
+	Model         string        `json:"model"`
+	Messages      []ChatMessage `json:"messages"`
+	Temperature   *float64      `json:"temperature,omitempty"`
+	TopP          *float64      `json:"top_p,omitempty"`
+	TopK          *int          `json:"top_k,omitempty"`
+	RepeatPenalty *float64      `json:"repeat_penalty,omitempty"`
+	Seed          *int          `json:"seed,omitempty"`
+	Stop          []string      `json:"stop,omitempty"`
+	MaxTokens     *int          `json:"max_tokens,omitempty"`
+	Stream        bool          `json:"stream,omitempty"`
+}
+
+type ChatCompletionResponse struct {
+	Choices []struct {
+		Message struct {
+			Role    string `json:"role"`
+			Content string `json:"content"`
+		} `json:"message"`
+	} `json:"choices"`
+}
+
 func NewClient(baseURL string) *Client {
 	return &Client{
 		baseURL: baseURL,
@@ -69,20 +97,31 @@ func (c *Client) Generate(ctx context.Context, model, prompt string) (string, er
 	return c.GenerateWithParams(ctx, model, prompt, nil)
 }
 
-func (c *Client) GenerateWithParams(ctx context.Context, model, prompt string, params *OllamaParams) (string, error) {
-	req := GenerateRequest{
-		Model:  model,
-		Prompt: prompt,
-		Stream: false,
+func (c *Client) GenerateWithParams(ctx context.Context, model, userPrompt string, params *OllamaParams) (string, error) {
+	var messages []ChatMessage
+	if params != nil && params.Prompt != "" {
+		messages = append(messages, ChatMessage{
+			Role:    "system",
+			Content: params.Prompt,
+		})
 	}
+	messages = append(messages, ChatMessage{
+		Role:    "user",
+		Content: userPrompt,
+	})
 
-	// Apply custom parameters if provided
+	// Собираем параметры
+	req := ChatCompletionRequest{
+		Model:    model,
+		Messages: messages,
+		Stream:   false,
+	}
 	if params != nil {
 		if params.Temperature != nil {
 			req.Temperature = params.Temperature
 		}
 		if params.MaxTokens != nil {
-			req.NumPredict = params.MaxTokens
+			req.MaxTokens = params.MaxTokens
 		}
 		if params.TopP != nil {
 			req.TopP = params.TopP
@@ -99,7 +138,6 @@ func (c *Client) GenerateWithParams(ctx context.Context, model, prompt string, p
 		if params.Stop != nil {
 			req.Stop = params.Stop
 		}
-		// Override model if specified in params
 		if params.Model != "" {
 			req.Model = params.Model
 		}
@@ -110,7 +148,7 @@ func (c *Client) GenerateWithParams(ctx context.Context, model, prompt string, p
 		return "", fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/generate", bytes.NewReader(reqBody))
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/v1/chat/completions", bytes.NewReader(reqBody))
 	if err != nil {
 		return "", fmt.Errorf("create request: %w", err)
 	}
@@ -128,12 +166,14 @@ func (c *Client) GenerateWithParams(ctx context.Context, model, prompt string, p
 		return "", fmt.Errorf("ollama error %d: %s", resp.StatusCode, string(body))
 	}
 
-	var result GenerateResponse
+	var result ChatCompletionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("decode response: %w", err)
 	}
-
-	return result.Response, nil
+	if len(result.Choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
+	}
+	return result.Choices[0].Message.Content, nil
 }
 
 func (c *Client) Health(ctx context.Context) error {

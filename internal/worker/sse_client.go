@@ -276,6 +276,10 @@ func (c *SSEClient) parseEvent(lines []string, event *SSEEvent) error {
 }
 
 func (c *SSEClient) handleEvent(event SSEEvent) error {
+	if event.Type == "" {
+		return nil
+	}
+
 	log.Printf("Received SSE event: type=%s, timestamp=%d\n", event.Type, event.Timestamp)
 
 	switch event.Type {
