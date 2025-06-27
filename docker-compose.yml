@@ -3,6 +3,7 @@ services:
     build: 
       dockerfile: Dockerfile.dev
     environment:
+      - SELF_UPDATE_ENABLED=false
       - OLLAMA_URL=http://host.docker.internal:11434
       - WORKER_URL=http://host.docker.internal:8080
       - HEALTH_ADDR=0.0.0.0:8081
@@ -15,7 +16,7 @@ services:
       - QUEUE_SIZE=8
       - MAX_BATCH_SIZE=8
       - PROCESSOR_ID=dev
-      - HEARTBEAT_INTERVAL=10s
+      - HEARTBEAT_INTERVAL=60s
       - INTERNAL_API_KEY=dev-internal-key
       - SSE_ENABLED=false
       - SSE_ENDPOINT=/api/internal/task-stream

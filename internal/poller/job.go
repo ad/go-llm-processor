@@ -21,6 +21,7 @@ type TaskJob struct {
 	poller       *Poller
 	ollamaClient *ollama.Client
 	workerClient *worker.Client
+	OnDone       func(ctx context.Context, taskID string) // callback после завершения
 }
 
 func NewTaskJob(task worker.Task, poller *Poller, ollamaClient *ollama.Client, workerClient *worker.Client) *TaskJob {
@@ -38,6 +39,11 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 
 	// Ensure task is removed from active list on completion
 	defer tj.poller.removeActiveTask(tj.task.ID)
+	defer func() {
+		if tj.OnDone != nil {
+			tj.OnDone(ctx, tj.task.ID)
+		}
+	}()
 
 	metrics.GlobalMetrics.IncrementProcessed()
 

@@ -44,15 +44,15 @@ func Load() *Config {
 		OllamaURL:         getEnv("OLLAMA_URL", getEnv("OLLAMA_HOST", "http://ollama:11434")),
 		WorkerURL:         getEnv("WORKER_URL", "http://wrangler:8080"),
 		HealthAddr:        getEnv("HEALTH_ADDR", ":8081"),
-		PollInterval:      getDuration("POLL_INTERVAL", 5*time.Second),
-		PollingEnabled:    getBool("POLLING_ENABLED", true), // по умолчанию включён
-		MaxRetries:        getInt("MAX_RETRIES", 3),
+		PollInterval:      getDuration("POLL_INTERVAL", 60*time.Second),
+		PollingEnabled:    getBool("POLLING_ENABLED", false), // по умолчанию включён
+		MaxRetries:        getInt("MAX_RETRIES", 5),
 		RequestTimeout:    getDuration("REQUEST_TIMEOUT", 30*time.Second),
-		ModelName:         getEnv("MODEL_NAME", "gemma2:1b"),
-		WorkerCount:       getInt("WORKER_COUNT", 3),
-		QueueSize:         getInt("QUEUE_SIZE", 100),
+		ModelName:         getEnv("MODEL_NAME", "gemma3:1b"),
+		WorkerCount:       getInt("WORKER_COUNT", 2),
+		QueueSize:         getInt("QUEUE_SIZE", 4),
 		ProcessorID:       generateProcessorID(),
-		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 15*time.Second),
+		HeartbeatInterval: getDuration("HEARTBEAT_INTERVAL", 60*time.Second),
 		MaxBatchSize:      getInt("MAX_BATCH_SIZE", 5),
 		InternalAPIKey:    getEnv("INTERNAL_API_KEY", "dev-internal-key"),
 		SSE: SSEConfig{
@@ -61,7 +61,7 @@ func Load() *Config {
 			ReconnectInterval:    getDuration("SSE_RECONNECT_INTERVAL", 5*time.Second),
 			MaxReconnectAttempts: getInt("SSE_MAX_RECONNECT_ATTEMPTS", 10),
 			HeartbeatTimeout:     getDuration("SSE_HEARTBEAT_TIMEOUT", 60*time.Second),
-			HeartbeatInterval:    getDuration("SSE_HEARTBEAT_INTERVAL", 30*time.Second),
+			HeartbeatInterval:    getDuration("SSE_HEARTBEAT_INTERVAL", 60*time.Second),
 			MaxDuration:          getDuration("SSE_MAX_DURATION", time.Hour),
 		},
 	}

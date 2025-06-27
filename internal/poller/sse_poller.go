@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ad/llm-proxy/processor/internal/config"
+	sysmetrics "github.com/ad/llm-proxy/processor/internal/metrics"
 	"github.com/ad/llm-proxy/processor/internal/ollama"
 	"github.com/ad/llm-proxy/processor/internal/worker"
 	workerpool "github.com/ad/llm-proxy/processor/pkg/worker"
@@ -19,6 +20,7 @@ type SSEPoller struct {
 	workerPool     *workerpool.Pool
 	sseClient      *worker.SSEClient
 	fallbackPoller *ImprovedPoller
+	activeTasks    map[string]string
 	sseEnabled     bool
 	mutex          sync.RWMutex
 }
@@ -47,6 +49,7 @@ func NewSSEPoller(workerClient *worker.Client, ollamaClient *ollama.Client, cfg 
 		config:         cfg,
 		workerPool:     workerpool.NewPool(cfg.WorkerCount, cfg.QueueSize),
 		sseClient:      sseClient,
+		activeTasks:    make(map[string]string),
 		fallbackPoller: fallbackPoller,
 		sseEnabled:     cfg.SSE.Enabled,
 	}
@@ -71,8 +74,9 @@ func (p *SSEPoller) startSSEMode(ctx context.Context) {
 	defer p.sseClient.Stop()
 
 	// Heartbeat ticker for processor metrics
-	heartbeatTicker := time.NewTicker(p.config.HeartbeatInterval)
+	heartbeatTicker := time.NewTicker(p.config.SSE.HeartbeatInterval)
 	defer heartbeatTicker.Stop()
+	p.sendHeartbeats(ctx)
 
 	// // Cleanup ticker
 	// cleanupTicker := time.NewTicker(p.config.PollInterval * 10)
@@ -153,9 +157,16 @@ func (p *SSEPoller) handleSSETask(ctx context.Context, taskData worker.TaskAvail
 		config: p.config,
 	}
 	job := NewTaskJob(task, pollerWrapper, p.ollamaClient, p.workerClient)
+	job.OnDone = func(ctx context.Context, taskID string) {
+		if err := p.workerClient.ReleaseTask(ctx, taskID); err != nil {
+			log.Printf("Failed to release task %s: %v", taskID, err)
+		}
+		p.removeActiveTask(taskID)
+	}
 
 	ok := p.workerPool.Submit(job)
 	if ok {
+		p.addActiveTask(taskData.TaskID)
 		// log.Printf("handleSSETask: submitted task %s to worker pool", taskData.TaskID)
 	} else {
 		log.Printf("handleSSETask: failed to submit task %s to worker pool (queue full)", taskData.TaskID)
@@ -182,12 +193,46 @@ func (p *SSEPoller) processFallbackTasks(ctx context.Context) {
 	}
 }
 
-func (p *SSEPoller) sendHeartbeats(ctx context.Context) {
-	// activeWorkers := p.workerPool.ActiveWorkers()
-	// availableSlots := p.workerPool.AvailableSlots()
+func (p *SSEPoller) addActiveTask(taskID string) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	p.activeTasks[taskID] = p.config.ProcessorID
+}
 
-	// Use available client methods - check if UpdateHeartbeat exists or use alternative
-	// log.Printf("Heartbeat: active workers: %d, available slots: %d\n", activeWorkers, availableSlots)
+func (p *SSEPoller) removeActiveTask(taskID string) {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+	delete(p.activeTasks, taskID)
+}
+
+func (p *SSEPoller) sendHeartbeats(ctx context.Context) {
+	p.mutex.RLock()
+	activeTasks := make([]string, 0, len(p.activeTasks))
+	for taskID := range p.activeTasks {
+		activeTasks = append(activeTasks, taskID)
+	}
+	currentQueueSize := len(p.activeTasks)
+	p.mutex.RUnlock()
+
+	// Send task heartbeats
+	for _, taskID := range activeTasks {
+		if err := p.workerClient.SendHeartbeat(ctx, taskID, p.config.ProcessorID); err != nil {
+			log.Printf("Error sending heartbeat for task %s: %v\n", taskID, err)
+			p.removeActiveTask(taskID)
+		}
+	}
+
+	// Send processor metrics heartbeat
+	systemMetrics := sysmetrics.GetSystemMetrics(currentQueueSize)
+	if err := p.workerClient.SendProcessorHeartbeat(
+		ctx,
+		p.config.ProcessorID,
+		&systemMetrics.CPUUsage,
+		&systemMetrics.MemoryUsage,
+		&systemMetrics.QueueSize,
+	); err != nil {
+		log.Printf("Error sending processor heartbeat: %v\n", err)
+	}
 }
 
 // func (p *SSEPoller) triggerCleanup(ctx context.Context) {

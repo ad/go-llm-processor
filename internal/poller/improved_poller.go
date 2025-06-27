@@ -160,7 +160,6 @@ func min(a, b int) int {
 	return b
 }
 
-// Остальные методы остаются такими же...
 func (p *ImprovedPoller) addActiveTask(taskID string) {
 	p.tasksMutex.Lock()
 	defer p.tasksMutex.Unlock()
