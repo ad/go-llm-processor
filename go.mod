@@ -3,12 +3,13 @@ module github.com/ad/llm-proxy/processor
 go 1.24
 
 require (
+	github.com/blang/semver v3.5.1+incompatible
+	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	golang.org/x/sync v0.15.0
 )
 
 require (
-	github.com/blang/semver v3.5.1+incompatible // indirect
 	github.com/golang/protobuf v1.3.2 // indirect
 	github.com/google/go-github/v30 v30.1.0 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect

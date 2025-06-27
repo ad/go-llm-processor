@@ -4,9 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"syscall"
 	"time"
 
 	"github.com/blang/semver"
+	"github.com/kardianos/osext"
 	gselfupdate "github.com/rhysd/go-github-selfupdate/selfupdate"
 )
 
@@ -48,10 +50,26 @@ func updateAndRestart(version semver.Version, repo string) error {
 }
 
 func StartAutoUpdate(version, repo string, interval time.Duration) {
+	fmt.Println("Текущая версия:", version, "Автоматическое обновление включено. Проверка каждые", interval)
 	go func() {
 		for {
 			CheckAndUpdate(version, repo)
 			time.Sleep(interval)
 		}
 	}()
+}
+
+// Restart app
+func Restart() error {
+	file, error := osext.Executable()
+	if error != nil {
+		return error
+	}
+
+	error = syscall.Exec(file, os.Args, os.Environ())
+	if error != nil {
+		return error
+	}
+
+	return nil
 }

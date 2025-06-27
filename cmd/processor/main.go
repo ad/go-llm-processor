@@ -26,7 +26,7 @@ func main() {
 	if !cfg.SelfUpdateEnabled {
 		log.Println("Self-update is disabled, skipping...")
 	} else {
-		selfupdate.StartAutoUpdate(version, "ad/go-llm-processor", 5*time.Minute)
+		selfupdate.StartAutoUpdate(version, "ad/go-llm-processor", 10*time.Minute)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
