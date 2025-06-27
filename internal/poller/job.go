@@ -2,6 +2,7 @@ package poller
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"time"
@@ -12,6 +13,8 @@ import (
 	"github.com/ad/llm-proxy/processor/pkg/metrics"
 	"github.com/ad/llm-proxy/processor/pkg/retry"
 )
+
+var errTaskRequeued = errors.New("task requeued")
 
 type TaskJob struct {
 	task         worker.Task
@@ -31,7 +34,7 @@ func NewTaskJob(task worker.Task, poller *Poller, ollamaClient *ollama.Client, w
 
 func (tj *TaskJob) Execute(ctx context.Context) error {
 	startTime := time.Now()
-	log.Printf("Processing task %s with processor %s\n", tj.task.ID, tj.poller.config.ProcessorID)
+	log.Printf("Processing task %s with processor %s: %s\n", tj.task.ID, tj.poller.config.ProcessorID, tj.task.ProductData)
 
 	// Ensure task is removed from active list on completion
 	defer tj.poller.removeActiveTask(tj.task.ID)
@@ -58,15 +61,11 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 	err = retry.Do(taskCtx, retryConfig, func() error {
 		modelToUse := tj.poller.config.ModelName
 
-		// Generate prompt for product description
-		var prompt string
 		if ollamaParams != nil {
 			// Use custom model if specified, otherwise use config default
 			if ollamaParams.Model != "" {
 				modelToUse = ollamaParams.Model
 			}
-
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, ollamaParams.Prompt)
 		} else {
 			temp := 0.3
 			topP := 0.9
@@ -81,7 +80,10 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 				RepeatPenalty: &repeatPenalty,
 			}
 
-			prompt = promptutils.BuildPromptFromString(tj.task.ProductData, "")
+		}
+
+		if ollamaParams.Prompt == "" {
+			ollamaParams.Prompt = promptutils.GetDefaultPrompt()
 		}
 
 		// Проверяем доступность модели
@@ -91,19 +93,25 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 			requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "model unavailable: "+err.Error())
 			if requeueErr != nil {
 				log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v\n", tj.task.ID, requeueErr)
+				return requeueErr
 			}
-			return nil // Не продолжаем ретраи, задача возвращена в пул
+			return errTaskRequeued
 		}
 
-		var genErr error
+		// log.Printf("Using model %s for task %s and params %+v\n", modelToUse, tj.task.ID, ollamaParams)
 
-		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, prompt, ollamaParams)
+		var genErr error
+		result, genErr = tj.ollamaClient.GenerateWithParams(taskCtx, modelToUse, tj.task.ProductData, ollamaParams)
 		if genErr != nil {
 			metrics.GlobalMetrics.IncrementRetried()
 		}
 		return genErr
 	})
 
+	if errors.Is(err, errTaskRequeued) {
+		// Задача была requeue, не вызываем CompleteTask
+		return nil
+	}
 	if err != nil {
 		log.Printf("Error generating description for task %s after retries: %v\n", tj.task.ID, err)
 		metrics.GlobalMetrics.IncrementFailed()
@@ -111,8 +119,11 @@ func (tj *TaskJob) Execute(ctx context.Context) error {
 		requeueErr := tj.workerClient.RequeueTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, fmt.Sprintf("ollama error: %v", err))
 		if requeueErr != nil {
 			log.Printf("[REQUEUE ERROR] Failed to requeue task %s: %v\n", tj.task.ID, requeueErr)
+			// Если requeue не удался, пробуем завершить задачу с ошибкой
+			return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
 		}
-		return tj.workerClient.CompleteTask(ctx, tj.task.ID, tj.poller.config.ProcessorID, "failed", "", fmt.Sprintf("Generation failed after retries: %v", err))
+		// Если requeue успешен, не вызываем CompleteTask, чтобы избежать гонки
+		return nil
 	}
 
 	// Complete task with result

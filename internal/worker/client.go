@@ -65,7 +65,7 @@ type TasksResponse struct {
 type CompleteRequest struct {
 	ProcessorID string `json:"processor_id"`
 	Results     []struct {
-		TaskID       string  `json:"task_id"`
+		TaskID       string  `json:"taskId"`
 		Status       string  `json:"status"`
 		Result       *string `json:"result,omitempty"`
 		ErrorMessage *string `json:"error_message,omitempty"`
@@ -298,7 +298,7 @@ func (c *Client) ClaimTasksBatch(ctx context.Context, processorID string, batchS
 }
 
 func (c *Client) ReleaseTask(ctx context.Context, taskID string) error {
-	reqBody := fmt.Sprintf(`{"task_id": "%s"}`, taskID)
+	reqBody := fmt.Sprintf(`{"taskId": "%s"}`, taskID)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/internal/release", bytes.NewReader([]byte(reqBody)))
 	if err != nil {

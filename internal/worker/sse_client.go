@@ -21,10 +21,12 @@ type SSEEvent struct {
 }
 
 type TaskAvailableData struct {
-	TaskID                  string `json:"taskId"`
-	Priority                int    `json:"priority"`
-	RetryCount              int    `json:"retryCount"`
-	EstimatedProcessingTime int    `json:"estimatedProcessingTime,omitempty"`
+	TaskID                  string  `json:"taskId"`
+	Priority                int     `json:"priority"`
+	ProductData             string  `json:"productData,omitempty"`
+	OllamaParams            *string `json:"ollamaParams,omitempty"`
+	RetryCount              int     `json:"retryCount"`
+	EstimatedProcessingTime int     `json:"estimatedProcessingTime,omitempty"`
 }
 
 type ProcessorMetricsData struct {
@@ -219,6 +221,9 @@ func (c *SSEClient) readEvents(ctx context.Context, reader io.Reader) error {
 		}
 
 		line := scanner.Text()
+		// if line != "" {
+		// 	log.Printf("SSE raw line: %q", line)
+		// }
 
 		// Empty line indicates end of event
 		if line == "" {
@@ -226,6 +231,10 @@ func (c *SSEClient) readEvents(ctx context.Context, reader io.Reader) error {
 				if err := c.parseEvent(lines, &event); err != nil {
 					log.Printf("Error parsing event: %v\n", err)
 				} else {
+					if event.Type != "heartbeat" {
+						log.Printf("SSE parsed event type: %s", event.Type)
+					}
+
 					if err := c.handleEvent(event); err != nil {
 						log.Printf("Error handling event: %v\n", err)
 					}
@@ -255,6 +264,11 @@ func (c *SSEClient) parseEvent(lines []string, event *SSEEvent) error {
 				return fmt.Errorf("parsing event data: %w", err)
 			}
 
+			// Извлекаем type из JSON, если нет отдельного event: ...
+			if t, ok := data["type"].(string); ok && event.Type == "" {
+				event.Type = t
+			}
+
 			// Extract timestamp if present
 			if ts, ok := data["timestamp"].(float64); ok {
 				event.Timestamp = int64(ts)
@@ -277,29 +291,39 @@ func (c *SSEClient) parseEvent(lines []string, event *SSEEvent) error {
 
 func (c *SSEClient) handleEvent(event SSEEvent) error {
 	if event.Type == "" {
+		// log.Printf("Received empty SSE event type, skipping %v\n", event)
 		return nil
 	}
 
-	log.Printf("Received SSE event: type=%s, timestamp=%d\n", event.Type, event.Timestamp)
+	// log.Printf("Received SSE event: type=%s, timestamp=%d\n", event.Type, event.Timestamp)
 
 	switch event.Type {
 	case "task_available":
+		// log.Printf("task_available raw event.Data: %s", string(event.Data))
+		// Сначала распарсим event.Data как map, затем возьмём поле data и его распарсим в TaskAvailableData
+		var wrapper struct {
+			Data json.RawMessage `json:"data"`
+		}
+		if err := json.Unmarshal(event.Data, &wrapper); err != nil {
+			log.Printf("task_available: error parsing wrapper: %v, data: %s", err, string(event.Data))
+			return fmt.Errorf("parsing task_available wrapper: %w", err)
+		}
 		var taskData TaskAvailableData
-		if err := json.Unmarshal(event.Data, &taskData); err != nil {
+		if err := json.Unmarshal(wrapper.Data, &taskData); err != nil {
+			log.Printf("task_available: error parsing inner data: %v, data: %s", err, string(wrapper.Data))
 			return fmt.Errorf("parsing task_available data: %w", err)
 		}
-
-		log.Printf("New task available: %s (priority=%d, retryCount=%d)\n",
-			taskData.TaskID, taskData.Priority, taskData.RetryCount)
-
+		// log.Printf("task_available parsed: taskId=%s, priority=%d, retryCount=%d, productData=%s, ollamaParams=%v", taskData.TaskID, taskData.Priority, taskData.RetryCount, taskData.ProductData, taskData.OllamaParams)
+		// log.Printf("task_available: sending to taskChan: %s", taskData.TaskID)
 		select {
 		case c.taskChan <- taskData:
+			// log.Printf("task_available: successfully sent to taskChan: %s", taskData.TaskID)
 		default:
-			log.Printf("Task channel full, dropping task notification: %s\n", taskData.TaskID)
+			log.Printf("Task channel full, dropping task notification: %s", taskData.TaskID)
 		}
 
 	case "heartbeat":
-		log.Printf("Received heartbeat from server\n")
+		// log.Printf("Received heartbeat from server\n")
 
 	case "processor_metrics":
 		var metrics ProcessorMetricsData
