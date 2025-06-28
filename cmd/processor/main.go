@@ -76,7 +76,7 @@ func main() {
 			taskPoller.Start(ctx)
 		} else {
 			log.Println("Starting HTTP polling mode...")
-			taskPoller := poller.NewImproved(workerAPIClient, ollamaClient, cfg)
+			taskPoller := poller.New(workerAPIClient, ollamaClient, cfg)
 			taskPoller.Start(ctx)
 		}
 	}()

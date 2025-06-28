@@ -115,5 +115,5 @@ func TestWorkerPool_QueueFull(t *testing.T) {
 	}
 
 	// Eventually some submissions should fail when queue gets full
-	t.Logf("Successfully submitted %d extra jobs before queue became full", submittedExtra)
+	// t.Logf("Successfully submitted %d extra jobs before queue became full", submittedExtra)
 }

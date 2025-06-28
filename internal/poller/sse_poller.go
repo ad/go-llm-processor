@@ -19,7 +19,7 @@ type SSEPoller struct {
 	config         *config.Config
 	workerPool     *workerpool.Pool
 	sseClient      *worker.SSEClient
-	fallbackPoller *ImprovedPoller
+	fallbackPoller *Poller
 	activeTasks    map[string]string
 	sseEnabled     bool
 	mutex          sync.RWMutex
@@ -41,7 +41,7 @@ func NewSSEPoller(workerClient *worker.Client, ollamaClient *ollama.Client, cfg 
 		},
 	)
 
-	fallbackPoller := NewImproved(workerClient, ollamaClient, cfg)
+	fallbackPoller := New(workerClient, ollamaClient, cfg)
 
 	return &SSEPoller{
 		workerClient:   workerClient,
@@ -152,16 +152,12 @@ func (p *SSEPoller) handleSSETask(ctx context.Context, taskData worker.TaskAvail
 		OllamaParams: taskData.OllamaParams,
 	}
 
-	// Create task job with minimal poller wrapper
-	pollerWrapper := &Poller{
-		config: p.config,
-	}
-	job := NewTaskJob(task, pollerWrapper, p.ollamaClient, p.workerClient)
-	job.OnDone = func(ctx context.Context, taskID string) {
-		if err := p.workerClient.ReleaseTask(ctx, taskID); err != nil {
-			log.Printf("Failed to release task %s: %v", taskID, err)
+	job := NewTaskJob(task, p.fallbackPoller, p.ollamaClient, p.workerClient)
+	job.OnDone = func(result string, err error) {
+		if err := p.workerClient.ReleaseTask(ctx, task.ID); err != nil {
+			log.Printf("Failed to release task %s: %v", task.ID, err)
 		}
-		p.removeActiveTask(taskID)
+		p.removeActiveTask(task.ID)
 	}
 
 	ok := p.workerPool.Submit(job)
@@ -184,10 +180,7 @@ func (p *SSEPoller) processFallbackTasks(ctx context.Context) {
 	if len(tasks) > 0 {
 		log.Printf("Caught %d tasks via fallback polling\n", len(tasks))
 		for _, task := range tasks {
-			pollerWrapper := &Poller{
-				config: p.config,
-			}
-			job := NewTaskJob(task, pollerWrapper, p.ollamaClient, p.workerClient)
+			job := NewTaskJob(task, p.fallbackPoller, p.ollamaClient, p.workerClient)
 			p.workerPool.Submit(job)
 		}
 	}
