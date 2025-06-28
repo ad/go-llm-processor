@@ -154,9 +154,9 @@ func (p *SSEPoller) handleSSETask(ctx context.Context, taskData worker.TaskAvail
 
 	job := NewTaskJob(task, p.fallbackPoller, p.ollamaClient, p.workerClient)
 	job.OnDone = func(result string, err error) {
-		if err := p.workerClient.ReleaseTask(ctx, task.ID); err != nil {
-			log.Printf("Failed to release task %s: %v", task.ID, err)
-		}
+		// if err := p.workerClient.ReleaseTask(ctx, task.ID); err != nil {
+		// 	log.Printf("Failed to release task %s: %v", task.ID, err)
+		// }
 		p.removeActiveTask(task.ID)
 	}
 
