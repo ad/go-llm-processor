@@ -19,8 +19,8 @@ import (
 )
 
 type ImprovedPoller struct {
-	workerClient      *worker.Client
-	ollamaClient      *ollama.Client
+	workerClient      WorkerClient
+	ollamaClient      OllamaClient
 	config            *config.Config
 	workerPool        *workerpool.Pool
 	activeTasks       map[string]string
@@ -46,14 +46,17 @@ func (p *ImprovedPoller) Start(ctx context.Context) {
 	defer p.workerPool.Stop()
 
 	// Staggered startup to avoid thundering herd
-	initialDelay := time.Duration(rand.Intn(30)) * time.Second
-	time.Sleep(initialDelay)
+	initialDelay := p.config.InitialDelay
+	if initialDelay != 0 {
+		time.Sleep(initialDelay)
+	}
 
 	// Adaptive polling with exponential backoff
 	p.adaptivePollingLoop(ctx)
 }
 
 func (p *ImprovedPoller) adaptivePollingLoop(ctx context.Context) {
+	// log.Printf("adaptivePollingLoop started")
 	heartbeatTicker := time.NewTicker(p.config.HeartbeatInterval)
 	defer heartbeatTicker.Stop()
 
@@ -100,6 +103,7 @@ func (p *ImprovedPoller) calculatePollInterval() time.Duration {
 }
 
 func (p *ImprovedPoller) processTasks(ctx context.Context) {
+	// log.Printf("processTasks called")
 	// Batch claim multiple tasks at once
 	availableSlots := p.workerPool.AvailableSlots()
 	if availableSlots == 0 {
@@ -127,8 +131,15 @@ func (p *ImprovedPoller) processTasks(ctx context.Context) {
 			return
 		default:
 			p.addActiveTask(task.ID)
-			job := NewImprovedTaskJob(task, p, p.ollamaClient, p.workerClient)
+			// log.Printf("Creating ImprovedTaskJob for task %s", task.ID)
+			job := NewImprovedTaskJob(
+				task,
+				p,
+				p.ollamaClient,
+				p.workerClient,
+			)
 
+			// log.Printf("Submitting job for task %s to workerPool", task.ID)
 			if !p.workerPool.Submit(job) {
 				log.Printf("Worker pool full, releasing task %s\n", task.ID)
 				p.removeActiveTask(task.ID)
@@ -211,11 +222,11 @@ func (p *ImprovedPoller) triggerCleanup(ctx context.Context) {
 type ImprovedTaskJob struct {
 	task         worker.Task
 	poller       *ImprovedPoller
-	ollamaClient *ollama.Client
-	workerClient *worker.Client
+	ollamaClient OllamaClient
+	workerClient WorkerClient
 }
 
-func NewImprovedTaskJob(task worker.Task, poller *ImprovedPoller, ollamaClient *ollama.Client, workerClient *worker.Client) *ImprovedTaskJob {
+func NewImprovedTaskJob(task worker.Task, poller *ImprovedPoller, ollamaClient OllamaClient, workerClient WorkerClient) *ImprovedTaskJob {
 	return &ImprovedTaskJob{
 		task:         task,
 		poller:       poller,
@@ -225,8 +236,9 @@ func NewImprovedTaskJob(task worker.Task, poller *ImprovedPoller, ollamaClient *
 }
 
 func (tj *ImprovedTaskJob) Execute(ctx context.Context) error {
+	// log.Printf("Execute called for task %s", tj.task.ID)
 	startTime := time.Now()
-	log.Printf("Processing task %s in improved worker pool", tj.task.ID)
+	// log.Printf("Processing task %s in improved worker pool", tj.task.ID)
 
 	metrics.GlobalMetrics.IncrementProcessed()
 

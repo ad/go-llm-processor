@@ -26,6 +26,7 @@ type Config struct {
 	InternalAPIKey    string
 	SSE               SSEConfig
 	PollingEnabled    bool // новое поле
+	InitialDelay      time.Duration
 }
 
 type SSEConfig struct {
@@ -64,6 +65,7 @@ func Load() *Config {
 			HeartbeatInterval:    getDuration("SSE_HEARTBEAT_INTERVAL", 60*time.Second),
 			MaxDuration:          getDuration("SSE_MAX_DURATION", time.Hour),
 		},
+		InitialDelay: getDuration("INITIAL_DELAY", 0),
 	}
 }
 
