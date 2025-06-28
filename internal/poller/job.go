@@ -7,10 +7,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/ad/llm-proxy/processor/internal/ollama"
 	"github.com/ad/llm-proxy/processor/internal/promptutils"
 	"github.com/ad/llm-proxy/processor/internal/worker"
 	"github.com/ad/llm-proxy/processor/pkg/metrics"
+	"github.com/ad/llm-proxy/processor/pkg/ollama"
 	"github.com/ad/llm-proxy/processor/pkg/retry"
 )
 

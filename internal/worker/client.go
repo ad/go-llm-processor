@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ad/llm-proxy/processor/internal/ollama"
+	"github.com/ad/llm-proxy/processor/pkg/ollama"
 )
 
 type Client struct {

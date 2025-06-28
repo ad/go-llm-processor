@@ -111,7 +111,7 @@ func TestSSEClient_HandleEvent(t *testing.T) {
 			name: "task available event",
 			event: SSEEvent{
 				Type: "task_available",
-				Data: json.RawMessage(`{"taskId":"task-123","priority":1,"retryCount":0}`),
+				Data: json.RawMessage(`{"data":{"taskId":"task-123","priority":1,"retryCount":0}}`),
 			},
 			expectTask: true,
 		},
@@ -188,7 +188,7 @@ func TestSSEClient_MockServer(t *testing.T) {
 
 		// Send task available event
 		w.Write([]byte("event: task_available\n"))
-		w.Write([]byte("data: {\"taskId\":\"test-task\",\"priority\":1,\"retryCount\":0,\"timestamp\":1234567890}\n"))
+		w.Write([]byte("data: {\"data\":{\"taskId\":\"test-task\",\"priority\":1,\"retryCount\":0,\"timestamp\":1234567890}}\n"))
 		w.Write([]byte("\n"))
 		flusher.Flush()
 

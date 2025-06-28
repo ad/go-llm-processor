@@ -12,10 +12,10 @@ import (
 
 	"github.com/ad/llm-proxy/processor/internal/config"
 	"github.com/ad/llm-proxy/processor/internal/health"
-	"github.com/ad/llm-proxy/processor/internal/ollama"
 	"github.com/ad/llm-proxy/processor/internal/poller"
 	"github.com/ad/llm-proxy/processor/internal/selfupdate"
 	"github.com/ad/llm-proxy/processor/internal/worker"
+	"github.com/ad/llm-proxy/processor/pkg/ollama"
 )
 
 var version = "v0.0.1"

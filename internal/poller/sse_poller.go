@@ -8,8 +8,8 @@ import (
 
 	"github.com/ad/llm-proxy/processor/internal/config"
 	sysmetrics "github.com/ad/llm-proxy/processor/internal/metrics"
-	"github.com/ad/llm-proxy/processor/internal/ollama"
 	"github.com/ad/llm-proxy/processor/internal/worker"
+	"github.com/ad/llm-proxy/processor/pkg/ollama"
 	workerpool "github.com/ad/llm-proxy/processor/pkg/worker"
 )
 
