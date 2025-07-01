@@ -4,6 +4,7 @@ go 1.24
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
+	github.com/joho/godotenv v1.5.1
 	github.com/kardianos/osext v0.0.0-20190222173326-2bc1f35cddc0
 	github.com/rhysd/go-github-selfupdate v1.2.3
 	golang.org/x/sync v0.15.0
