@@ -30,6 +30,7 @@ type Config struct {
 	PollingEnabled    bool // новое поле
 	InitialDelay      time.Duration
 	DisableJitter     bool // для тестов: отключить jitter в poll interval
+	WorkStealing      WorkStealingConfig
 }
 
 type SSEConfig struct {
@@ -40,6 +41,13 @@ type SSEConfig struct {
 	HeartbeatTimeout     time.Duration `env:"SSE_HEARTBEAT_TIMEOUT" envDefault:"60s"`
 	HeartbeatInterval    time.Duration `env:"SSE_HEARTBEAT_INTERVAL" envDefault:"30s"`
 	MaxDuration          time.Duration `env:"SSE_MAX_DURATION" envDefault:"1h"`
+}
+
+type WorkStealingConfig struct {
+	Enabled       bool          `env:"WORK_STEALING_ENABLED" envDefault:"true"`
+	Interval      time.Duration `env:"WORK_STEALING_INTERVAL" envDefault:"120s"`
+	MaxStealCount int           `env:"WORK_STEALING_MAX_COUNT" envDefault:"2"`
+	MinCapacity   float64       `env:"WORK_STEALING_MIN_CAPACITY" envDefault:"0.3"` // минимальная свободная емкость для воровства
 }
 
 func Load() *Config {
@@ -67,6 +75,12 @@ func Load() *Config {
 			HeartbeatTimeout:     getDuration("SSE_HEARTBEAT_TIMEOUT", 60*time.Second),
 			HeartbeatInterval:    getDuration("SSE_HEARTBEAT_INTERVAL", 60*time.Second),
 			MaxDuration:          getDuration("SSE_MAX_DURATION", time.Hour),
+		},
+		WorkStealing: WorkStealingConfig{
+			Enabled:       getBool("WORK_STEALING_ENABLED", true),
+			Interval:      getDuration("WORK_STEALING_INTERVAL", 120*time.Second),
+			MaxStealCount: getInt("WORK_STEALING_MAX_COUNT", 2),
+			MinCapacity:   getFloat64("WORK_STEALING_MIN_CAPACITY", 0.3),
 		},
 		InitialDelay:  getDuration("INITIAL_DELAY", 0),
 		DisableJitter: getBool("DISABLE_JITTER", false), // по умолчанию включён
@@ -102,6 +116,15 @@ func getBool(key string, defaultValue bool) bool {
 	if value := os.Getenv(key); value != "" {
 		if b, err := strconv.ParseBool(value); err == nil {
 			return b
+		}
+	}
+	return defaultValue
+}
+
+func getFloat64(key string, defaultValue float64) float64 {
+	if value := os.Getenv(key); value != "" {
+		if f, err := strconv.ParseFloat(value, 64); err == nil {
+			return f
 		}
 	}
 	return defaultValue

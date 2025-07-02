@@ -383,3 +383,42 @@ func (c *Client) RequeueTask(ctx context.Context, taskID, processorID, reason st
 	}
 	return nil
 }
+
+// WorkSteal отправляет запрос на "воровство" задач от перегруженных процессоров
+func (c *Client) WorkSteal(ctx context.Context, processorID string, maxStealCount int, timeoutMs int) ([]Task, error) {
+	request := map[string]interface{}{
+		"processor_id":    processorID,
+		"max_steal_count": maxStealCount,
+		"timeout_ms":      timeoutMs,
+	}
+	body, err := json.Marshal(request)
+	if err != nil {
+		return nil, fmt.Errorf("marshal work steal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/api/internal/work-steal", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create work steal request: %w", err)
+	}
+	c.addAuthHeaders(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do work steal request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("work steal error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var result struct {
+		Tasks []Task `json:"tasks"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, fmt.Errorf("decode work steal response: %w", err)
+	}
+
+	return result.Tasks, nil
+}

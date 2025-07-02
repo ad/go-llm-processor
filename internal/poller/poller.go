@@ -91,6 +91,12 @@ func (p *Poller) adaptivePollingLoop(ctx context.Context) {
 	cleanupTicker := time.NewTicker(p.config.PollInterval * 10)
 	defer cleanupTicker.Stop()
 
+	var workStealingTicker *time.Ticker
+	if p.config.WorkStealing.Enabled {
+		workStealingTicker = time.NewTicker(p.config.WorkStealing.Interval)
+		defer workStealingTicker.Stop()
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -99,6 +105,13 @@ func (p *Poller) adaptivePollingLoop(ctx context.Context) {
 			p.sendHeartbeats(ctx)
 		case <-cleanupTicker.C:
 			p.triggerCleanup(ctx)
+		case <-func() <-chan time.Time {
+			if workStealingTicker != nil {
+				return workStealingTicker.C
+			}
+			return make(chan time.Time) // never triggers
+		}():
+			p.tryWorkStealing(ctx)
 		default:
 			// Adaptive polling interval
 			interval := p.calculatePollInterval()
@@ -180,6 +193,73 @@ func (p *Poller) processTasks(ctx context.Context) {
 				}
 			} else {
 				log.Printf("No slots left, releasing task %s\n", task.ID)
+				p.workerClient.ReleaseTask(ctx, task.ID)
+			}
+		}
+	}
+}
+
+// tryWorkStealing attempts to steal tasks from overloaded processors
+func (p *Poller) tryWorkStealing(ctx context.Context) {
+	// Проверяем, есть ли у нас свободная емкость для воровства задач
+	availableSlots := p.workerPool.AvailableSlots()
+	capacity := float64(availableSlots) / float64(p.config.WorkerCount)
+
+	// Если у нас недостаточно свободного места, не воруем задачи
+	if capacity < p.config.WorkStealing.MinCapacity {
+		return
+	}
+
+	// Определяем количество задач для воровства
+	maxStealCount := p.config.WorkStealing.MaxStealCount
+	if availableSlots < maxStealCount {
+		maxStealCount = availableSlots
+	}
+
+	if maxStealCount == 0 {
+		return
+	}
+
+	timeoutMs := int(p.config.RequestTimeout.Milliseconds())
+
+	// Пытаемся украсть задачи
+	stolenTasks, err := p.workerClient.WorkSteal(ctx, p.config.ProcessorID, maxStealCount, timeoutMs)
+	if err != nil {
+		log.Printf("Error during work stealing: %v", err)
+		return
+	}
+
+	if len(stolenTasks) == 0 {
+		return
+	}
+
+	log.Printf("Successfully stole %d tasks from overloaded processors", len(stolenTasks))
+
+	// Обрабатываем украденные задачи
+	slotsLeft := availableSlots
+	for _, task := range stolenTasks {
+		select {
+		case <-ctx.Done():
+			// Контекст отменен, возвращаем оставшиеся задачи
+			for i := len(stolenTasks) - slotsLeft + len(stolenTasks) - 1; i < len(stolenTasks); i++ {
+				if i >= 0 {
+					p.workerClient.ReleaseTask(ctx, stolenTasks[i].ID)
+				}
+			}
+			return
+		default:
+			if slotsLeft > 0 {
+				p.addActiveTask(task.ID)
+				job := NewTaskJob(task, p, p.ollamaClient, p.workerClient)
+				if p.workerPool.Submit(job) {
+					slotsLeft--
+				} else {
+					log.Printf("Worker pool full, releasing stolen task %s", task.ID)
+					p.removeActiveTask(task.ID)
+					p.workerClient.ReleaseTask(ctx, task.ID)
+				}
+			} else {
+				log.Printf("No slots left, releasing stolen task %s", task.ID)
 				p.workerClient.ReleaseTask(ctx, task.ID)
 			}
 		}

@@ -24,6 +24,7 @@ type MockWorkerClient struct {
 	releaseTaskFunc            func(ctx context.Context, id string) error
 	SendHeartbeatFunc          func(ctx context.Context, taskID, procID string) error
 	SendProcessorHeartbeatFunc func(ctx context.Context, procID string, cpu, mem *float64, queue *int) error
+	workStealFunc              func(ctx context.Context, processorID string, maxStealCount int, timeoutMs int) ([]worker.Task, error)
 }
 
 func (m *MockWorkerClient) CompleteTask(ctx context.Context, id, procID, status, result, errMsg string) error {
@@ -75,6 +76,15 @@ func (m *MockWorkerClient) SendProcessorHeartbeat(ctx context.Context, procID st
 	return nil
 }
 func (m *MockWorkerClient) TriggerCleanup(ctx context.Context) error { return nil }
+func (m *MockWorkerClient) WorkSteal(ctx context.Context, processorID string, maxStealCount int, timeoutMs int) ([]worker.Task, error) {
+	m.callsMu.Lock()
+	m.calls["WorkSteal"]++
+	m.callsMu.Unlock()
+	if m.workStealFunc != nil {
+		return m.workStealFunc(ctx, processorID, maxStealCount, timeoutMs)
+	}
+	return nil, nil
+}
 
 type MockOllamaClient struct {
 	calls                    map[string]int
@@ -751,5 +761,153 @@ func TestPoller_WithTaskSource(t *testing.T) {
 	}
 	if called != 2 {
 		t.Errorf("CompleteTask должен быть вызван для каждой задачи из TaskSource, вызвано: %d", called)
+	}
+}
+
+func TestWorkStealing(t *testing.T) {
+	cfg := &config.Config{
+		WorkerCount:       4,
+		RequestTimeout:    10 * time.Second,
+		ProcessorID:       "test-processor",
+		HeartbeatInterval: time.Minute,
+		PollInterval:      time.Second,
+		WorkStealing: config.WorkStealingConfig{
+			Enabled:       true,
+			Interval:      5 * time.Second,
+			MaxStealCount: 2,
+			MinCapacity:   0.3,
+		},
+	}
+
+	mockWorkerClient := &MockWorkerClient{
+		calls: make(map[string]int),
+		workStealFunc: func(ctx context.Context, processorID string, maxStealCount int, timeoutMs int) ([]worker.Task, error) {
+			return []worker.Task{
+				{ID: "task1", ProductData: "data1", Priority: 1},
+				{ID: "task2", ProductData: "data2", Priority: 2},
+			}, nil
+		},
+	}
+	mockOllamaClient := &MockOllamaClient{
+		calls: make(map[string]int),
+	}
+
+	poller := &Poller{
+		workerClient: mockWorkerClient,
+		ollamaClient: mockOllamaClient,
+		config:       cfg,
+		workerPool:   workerpool.NewPool(cfg.WorkerCount, cfg.WorkerCount*2),
+		activeTasks:  make(map[string]string),
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Тестируем work stealing при достаточной емкости
+	poller.tryWorkStealing(ctx)
+
+	// Проверяем, что задачи были добавлены
+	poller.tasksMutex.RLock()
+	activeCount := len(poller.activeTasks)
+	poller.tasksMutex.RUnlock()
+
+	if activeCount != 2 {
+		t.Errorf("Expected 2 active tasks, got %d", activeCount)
+	}
+
+	// Проверяем, что WorkSteal был вызван
+	mockWorkerClient.callsMu.Lock()
+	workStealCalls := mockWorkerClient.calls["WorkSteal"]
+	mockWorkerClient.callsMu.Unlock()
+
+	if workStealCalls != 1 {
+		t.Errorf("Expected 1 WorkSteal call, got %d", workStealCalls)
+	}
+}
+
+func TestWorkStealingInsufficientCapacity(t *testing.T) {
+	cfg := &config.Config{
+		WorkerCount:       2,
+		RequestTimeout:    10 * time.Second,
+		ProcessorID:       "test-processor",
+		HeartbeatInterval: time.Minute,
+		PollInterval:      time.Second,
+		WorkStealing: config.WorkStealingConfig{
+			Enabled:       true,
+			Interval:      5 * time.Second,
+			MaxStealCount: 2,
+			MinCapacity:   0.8, // высокий порог (80% свободной емкости)
+		},
+	}
+
+	mockWorkerClient := &MockWorkerClient{
+		calls: make(map[string]int),
+		workStealFunc: func(ctx context.Context, processorID string, maxStealCount int, timeoutMs int) ([]worker.Task, error) {
+			return []worker.Task{
+				{ID: "task1", ProductData: "data1", Priority: 1},
+			}, nil
+		},
+	}
+	mockOllamaClient := &MockOllamaClient{
+		calls: make(map[string]int),
+	}
+
+	poller := &Poller{
+		workerClient: mockWorkerClient,
+		ollamaClient: mockOllamaClient,
+		config:       cfg,
+		workerPool:   workerpool.NewPool(cfg.WorkerCount, cfg.WorkerCount*2),
+		activeTasks:  make(map[string]string),
+	}
+
+	// Начинаем worker pool и занимаем ОБА места, чтобы емкость была 0
+	poller.workerPool.Start()
+	defer poller.workerPool.Stop()
+
+	// Добавляем две долгие задачи, чтобы занять оба воркера
+	testJob1 := &TestJob{duration: time.Second}
+	testJob2 := &TestJob{duration: time.Second}
+	poller.workerPool.Submit(testJob1)
+	poller.workerPool.Submit(testJob2)
+
+	// Ждем немного, чтобы задачи начались
+	time.Sleep(100 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	// Тестируем work stealing при недостаточной емкости (0% свободных воркеров < 80%)
+	poller.tryWorkStealing(ctx)
+
+	// Проверяем, что задачи НЕ были добавлены
+	poller.tasksMutex.RLock()
+	activeCount := len(poller.activeTasks)
+	poller.tasksMutex.RUnlock()
+
+	if activeCount != 0 {
+		t.Errorf("Expected 0 active tasks due to insufficient capacity, got %d", activeCount)
+	}
+
+	// Проверяем, что WorkSteal НЕ был вызван
+	mockWorkerClient.callsMu.Lock()
+	workStealCalls := mockWorkerClient.calls["WorkSteal"]
+	mockWorkerClient.callsMu.Unlock()
+
+	if workStealCalls != 0 {
+		t.Errorf("Expected 0 WorkSteal calls due to insufficient capacity, got %d", workStealCalls)
+	}
+}
+
+// TestJob для тестирования занятости worker pool
+type TestJob struct {
+	duration time.Duration
+}
+
+func (tj *TestJob) Execute(ctx context.Context) error {
+	select {
+	case <-time.After(tj.duration):
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }

@@ -5,6 +5,7 @@
 
 ## Ключевые особенности
 - Асинхронная обработка задач из очереди
+- **Work-stealing балансировка нагрузки** между процессорами
 - Взаимодействие с Ollama через HTTP API (internal/ollama/client.go)
 - Worker pool (pkg/worker/pool.go) с контролем параллелизма
 - SSE-уведомления клиентам о статусе задач (internal/worker/sse_client.go)
@@ -33,7 +34,7 @@ processor/
 
 ## Переменные окружения
 
-| Переменная                | Назначение                                 | Значение по умолчанию         |
+| ПЕРЕМЕННАЯ                | НАЗНАЧЕНИЕ                                 | ЗНАЧЕНИЕ ПО УМОЛЧАНИЮ         |
 |---------------------------|--------------------------------------------|-------------------------------|
 | OLLAMA_URL                | URL Ollama API                             | http://ollama:11434           |
 | WORKER_URL                | URL для внутренних worker-API               | http://wrangler:8080          |
@@ -49,6 +50,12 @@ processor/
 | HEARTBEAT_INTERVAL        | Интервал heartbeat для задач  | 15s                           |
 | MAX_BATCH_SIZE            | Максимальный batch для claim                | 5                             |
 | INTERNAL_API_KEY          | Ключ для внутренних API                     | dev-internal-key              |
+| **Work Stealing**         |                                            |                               |
+| WORK_STEALING_ENABLED     | Включить work-stealing                      | true                          |
+| WORK_STEALING_INTERVAL    | Интервал между попытками воровства          | 120s                          |
+| WORK_STEALING_MAX_COUNT   | Максимум задач для воровства за раз         | 2                             |
+| WORK_STEALING_MIN_CAPACITY| Минимальная свободная емкость для воровства | 0.3                           |
+| **SSE Configuration**     |                                            |                               |
 | SSE_ENABLED               | Включить SSE-клиент                         | true                          |
 | SSE_ENDPOINT              | SSE endpoint для получения задач            | /api/internal/task-stream     |
 | SSE_RECONNECT_INTERVAL    | Интервал переподключения SSE                | 5s                            |
@@ -76,6 +83,7 @@ make lint
 - Не храните секреты в публичных репозиториях
 
 ## Подробнее
+- [WORK_STEALING.md](./WORK_STEALING.md) — подробная документация по work-stealing
 - [internal/ollama/client.go](./internal/ollama/client.go) — взаимодействие с Ollama
 - [internal/worker/sse_client.go](./internal/worker/sse_client.go) — SSE-клиенты
 - [pkg/worker/pool.go](./pkg/worker/pool.go) — worker pool

@@ -15,6 +15,7 @@ type WorkerClient interface {
 	SendHeartbeat(ctx context.Context, taskID, procID string) error
 	SendProcessorHeartbeat(ctx context.Context, procID string, cpu, mem *float64, queue *int) error
 	TriggerCleanup(ctx context.Context) error
+	WorkSteal(ctx context.Context, processorID string, maxStealCount int, timeoutMs int) ([]worker.Task, error)
 }
 
 type OllamaClient interface {
