@@ -1,0 +1,14 @@
+[Unit]
+Description=Go LLM Processor Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env bash -c '/usr/local/bin/go-llm-processor'
+Restart=on-failure
+User=your_user
+WorkingDirectory=/etc/init.d/go-llm-processor
+Environment="OLLAMA_URL=http://ollama:11434" "WORKER_URL=http://wrangler:8080"
+
+[Install]
+WantedBy=multi-user.target

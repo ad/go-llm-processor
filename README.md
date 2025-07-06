@@ -89,5 +89,57 @@ make lint
 - [pkg/worker/pool.go](./pkg/worker/pool.go) — worker pool
 - [internal/promptutils/prompt.go](./internal/promptutils/prompt.go) — prompt builder
 
+## Запуск как сервис на Ubuntu
+
+Для запуска `processor` как systemd-сервис на Ubuntu выполните следующие шаги:
+
+1. Создайте unit-файл для systemd:
+
+```bash
+sudo nano /etc/systemd/system/go-llm-processor.service
+```
+
+2. Добавьте следующий контент в файл:
+
+```ini
+[Unit]
+Description=Go LLM Processor Service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/env bash -c '/path/to/your/binary'
+Restart=on-failure
+User=your_user
+WorkingDirectory=/path/to/your/project
+Environment="OLLAMA_URL=http://ollama:11434" "WORKER_URL=http://wrangler:8080"
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Замените `/path/to/your/project` на путь к вашему проекту и `your_user` на имя пользователя, от имени которого будет запускаться сервис.
+
+3. Перезагрузите systemd, чтобы применить изменения:
+
+```bash
+sudo systemctl daemon-reload
+```
+
+4. Включите и запустите сервис:
+
+```bash
+sudo systemctl enable go-llm-processor
+sudo systemctl start go-llm-processor
+```
+
+5. Проверьте статус сервиса:
+
+```bash
+sudo systemctl status go-llm-processor
+```
+
+Теперь `processor` будет автоматически запускаться при старте системы.
+
 ## Лицензия
 MIT
