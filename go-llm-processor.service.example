@@ -4,11 +4,26 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/env bash -c '/usr/local/bin/go-llm-processor'
+ExecStart=/usr/local/bin/processor_linux_amd64
 Restart=on-failure
-User=your_user
-WorkingDirectory=/etc/init.d/go-llm-processor
-Environment="OLLAMA_URL=http://ollama:11434" "WORKER_URL=http://wrangler:8080"
+RestartSec=5
+User=go-llm-processor
+Group=go-llm-processor
+WorkingDirectory=/opt/go-llm-processor
+Environment="OLLAMA_URL=http://localhost:11434" "WORKER_URL=https://wrangler" "HEALTH_ADDR=0.0.0.0:8081" "POLLING_ENABLED=false" "POLL_INTERVAL=300s" "MAX_RETRIES=10" "REQUEST_TIMEOUT=30s" "MODEL_NAME=gemma3:1b" "WORKER_COUNT=10" "QUEUE_SIZE=10" "MAX_BATCH_SIZE=10" "PROCESSOR_ID=nvidia3060" "HEARTBEAT_INTERVAL=30s" "INTERNAL_API_KEY=..." "SSE_ENABLED=true" "SSE_ENDPOINT=/api/internal/task-stream" "SSE_RECONNECT_INTERVAL=3s" "SSE_MAX_RECONNECT_ATTEMPTS=10000000" "SSE_HEARTBEAT_TIMEOUT=60s"
+
+# Логирование
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=go-llm-processor
+
+# Безопасность
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/log/go-llm-processor /var/lib/go-llm-processor
+ReadOnlyPaths=/etc/go-llm-processor
 
 [Install]
 WantedBy=multi-user.target

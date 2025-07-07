@@ -139,6 +139,22 @@ sudo systemctl start go-llm-processor
 sudo systemctl status go-llm-processor
 ```
 
+6. Логи сервиса можно просмотреть с помощью:
+
+```bash
+sudo journalctl -u go-llm-processor -f
+```
+
+# Логи за последний час
+```bash
+sudo journalctl -u go-llm-processor --since "1 hour ago"
+```
+
+# Логи с определенной даты
+```bash
+sudo journalctl -u go-llm-processor --since "2025-07-07"
+```
+
 Теперь `processor` будет автоматически запускаться при старте системы.
 
 ## Лицензия
